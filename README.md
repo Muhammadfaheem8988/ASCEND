@@ -59,7 +59,7 @@ When you trigger the Daily Review, the app securely passes your day's completion
 ![Analytics Screen](docs/analytics_screen.png)
 
 ### AI Review
-![AI Review](docs/ai_review.png)
+![AI Review](docs/ai_Review.png)
 
 ---
 
