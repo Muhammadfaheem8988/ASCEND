@@ -1,89 +1,81 @@
 # 🚀 ASCEND: AI-Powered Personal Growth Companion
 
-Ascend is a privacy-first, fully local Progressive Web App (PWA) designed to act as your ultimate personal growth companion. It helps you plan daily goals, track habits, learn new skills through AI-generated tracks, and reflect on your progress with a personalized AI nightly summary. 
+### 🌐 [Live Demo: Experience Ascend Here](https://ascendapp-rho.vercel.app/)
 
-Unlike bloated "Life OS" dashboards that become overwhelming, Ascend focuses on simplicity: **One clear screen per moment of the day — plan at night, execute during the day, review before bed.**
+## 📖 What is Ascend?
+**App Name:** ASCEND
+
+**What it does:** Ascend is a privacy-first, fully local Progressive Web App (PWA) designed to act as your ultimate personal growth companion. It helps you plan daily goals, track habits, learn new skills through AI-generated tracks, and reflect on your progress with a personalized AI nightly summary. 
+
+**The Problem it Solves:** Traditional "Life OS" dashboards often become overwhelming backlogs of uncompleted tasks, which leads to burnout and guilt. Ascend solves this friction by focusing exclusively on a single day at a time. Missing a day doesn't wipe your history or punish you; instead, the system gracefully scales down expectations to keep you moving forward.
+
+**Who it's for:** Students, self-learners, and professionals who want to build consistent habits and master new skills without the anxiety of a massive, cluttered to-do list.
 
 ---
 
-## ✨ Core Features
-
+## ✨ Features List
 *   🎯 **The "Today" Screen:** A single, focused view of your day. See your habits, one-off tasks, and exactly one lesson from your active learning tracks. No overwhelming backlogs.
-  <br/>
-  ![Today Screen](docs/today_screen.png)
-*   🤖 **AI Nightly Review (Gemini 3.6 Flash):** One hour before bed, Ascend generates a personalized summary of your day. It praises your consistency, gently reframes missed tasks, and provides actionable advice for tomorrow.
-*   🧠 **AI Curriculum Generator:** Want to master a new skill? Type the topic (e.g., "Fullstack React Developer") and the AI will automatically generate a perfectly paced 8-15 step learning syllabus for you.
-  <br/>
-  ![Tracks Screen](docs/tracks_screen.png)
-*   🔔 **Smart Notifications & Reminders:** Get local, offline-capable push notifications reminding you of scheduled tasks, habits, and your nightly planning ritual, powered by Service Workers.
+*   🧠 **AI Curriculum Generator:** Type any skill you want to master (e.g., "Fullstack React Developer"), and the AI instantly generates a perfectly paced 8-15 step learning syllabus.
+*   🤖 **AI Nightly Review:** A personalized, end-of-day summary that praises your consistency, gently reframes missed tasks, and provides actionable advice for tomorrow.
+*   🔔 **Smart Notifications & Reminders:** Get local, offline-capable push notifications reminding you of scheduled tasks, habits, and your nightly planning ritual.
 *   🌙 **Nightly Planning Ritual:** A focused flow to plan your next day, utilizing a smart default timing engine if you don't specify explicit times.
 *   📈 **Habit Streaks & Analytics:** Visual streak counters, a GitHub-style consistency heatmap, and a custom interactive donut chart tracking your all-time mastery.
-  <br/>
-  ![Analytics Screen](docs/analytics_screen.png)
-*   📱 **Installable PWA:** Install it directly to your desktop or mobile home screen as a native-feeling app.
-*   🔒 **100% Local-First & Private:** Your tasks, habits, and journal entries never leave your device. All data is stored locally in IndexedDB. AI requests are made directly from your browser using your own API key (Bring-Your-Own-Key).
+*   📱 **Installable PWA:** Install it directly to your desktop or mobile home screen as a native-feeling app (offline-capable).
+*   🔒 **100% Local-First & Private:** Your tasks, habits, and journal entries never leave your device. All data is stored locally in IndexedDB. AI requests use your own API key (Bring-Your-Own-Key).
 
 ---
 
-## 🛠️ Tech Stack
+## 🧠 The AI Feature Inside Ascend
+Ascend utilizes the powerful **Gemini 3.6 Flash** model to provide two core capabilities:
+1. **Curriculum Generation:** Creates an actionable syllabus for any new skill you want to learn.
+2. **Nightly Review:** Acts as a compassionate productivity coach.
 
+**How it works (The System Prompt):**
+When you trigger the Daily Review, the app securely passes your day's completion stats to Gemini using this exact system instruction:
+> *"You are Ascend, a highly encouraging, premium, and concise AI productivity companion. The user is ending their day. Here is their data for today... Please write a short, inspiring bedtime summary. 1. Praise them for what they completed. 2. Provide a gentle, non-judgmental perspective on what they missed. 3. Give them one small piece of actionable advice or an encouraging thought for tomorrow. Keep it under 4 short paragraphs. Use a warm, professional, and slightly futuristic tone."*
+
+---
+
+## 🛠️ Tools, Services, and AI Models
 *   **Frontend Framework:** React 19 + TypeScript + Vite
 *   **Styling:** Tailwind CSS (Custom utility classes, glassmorphism, micro-animations)
 *   **Database:** Dexie.js (IndexedDB wrapper for local-first storage)
 *   **Icons:** Lucide React
-*   **AI Engine:** Google Gemini API (gemini-3.6-flash) via direct REST
-*   **PWA:** `vite-plugin-pwa` (Offline support, manifests, service workers)
+*   **AI Engine:** Google Gemini API (`gemini-3.6-flash`) via direct REST
+*   **PWA / Service Workers:** `vite-plugin-pwa`
+*   **Deployment Hosting:** Vercel
 
 ---
 
-## 🚀 Getting Started
+## 📸 Screenshots
 
-### Prerequisites
-*   Node.js 18+
-*   A free Google Gemini API Key (Get one from Google AI Studio)
+### The "Today" Screen
+![Today Screen](docs/today_screen.png)
 
-### Installation
+### AI Curriculum Generator (Tracks)
+![Tracks Screen](docs/tracks_screen.png)
+
+### Analytics & Streaks Dashboard
+![Analytics Screen](docs/analytics_screen.png)
+
+---
+
+## 🚀 How to Run the Project Locally
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/ascend.git
-   cd ascend
+   git clone https://github.com/Muhammadfaheem8988/ASCEND.git
+   cd ASCEND
    ```
-
 2. **Install dependencies:**
    ```bash
    npm install
    ```
-
 3. **Run the development server:**
    ```bash
    npm run dev
    ```
-
-4. **Add your API Key:**
-   * Open the app in your browser (usually `http://localhost:5173`).
+4. **Configure your AI Key:**
+   * Open the app in your browser at `http://localhost:5173`.
    * Navigate to the **Settings** tab.
-   * Paste your Gemini API key into the designated field. Your key is stored securely in your browser's local database.
-
----
-
-## 🧠 How the AI Engine Works
-
-Ascend utilizes a Bring-Your-Own-Key (BYOK) architecture. When the AI features are triggered (like the Daily Review or Track Generator), the app sends a direct API request from your browser to Google's generative language servers.
-
-**Graceful Fallbacks:** If you are offline, or if you choose not to provide an API key, the app will never crash. It utilizes a robust rule-based fallback system to generate template-based summaries based on your raw completion stats for the day.
-
----
-
-## 🎨 Design Philosophy
-
-Ascend is built on three core principles:
-1.  **Progressive Disclosure:** Advanced settings and analytics are kept out of the way. The primary view is always just what you need to do *right now*.
-2.  **Anti-Burnout:** Missing a day doesn't wipe your history or punish you. The system encourages scaling down habits rather than breaking streaks.
-3.  **Aesthetic Excellence:** Smooth micro-animations, tailored dark-mode colors, and glassmorphic panels make the app feel incredibly premium and rewarding to interact with.
-
----
-
-## 📜 License
-
-MIT License. Free to use, modify, and distribute.
+   * Paste your Gemini API key (from Google AI Studio) into the designated field. (Your key remains 100% local on your device).
