@@ -1,4 +1,4 @@
-# 🚀 ASCEND: AI-Powered Personal Growth Companion
+# ASCEND: AI-Powered Personal Growth Companion
 
 ### 🌐 [Live Demo: Experience Ascend Here](https://ascendapp-rho.vercel.app/)
 
