@@ -58,6 +58,9 @@ When you trigger the Daily Review, the app securely passes your day's completion
 ### Analytics & Streaks Dashboard
 ![Analytics Screen](docs/analytics_screen.png)
 
+### AI Review
+![AI Review](docs/ai_review.png)
+
 ---
 
 ## 🚀 How to Run the Project Locally
