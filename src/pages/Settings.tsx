@@ -1,4 +1,4 @@
-import { Download, Trash2, AlertTriangle, ShieldAlert, Clock, Moon, Sun, Key } from 'lucide-react';
+import { Download, Upload, Trash2, AlertTriangle, ShieldAlert, Clock, Moon, Sun, Key } from 'lucide-react';
 import { db } from '../db/db';
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -6,6 +6,10 @@ import { useLiveQuery } from 'dexie-react-hooks';
 const Settings = () => {
   const [isExporting, setIsExporting] = useState(false);
   const [isWiping, setIsWiping] = useState(false);
+  const [keySaved, setKeySaved] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [dataNotice, setDataNotice] = useState('');
+  const [includeApiKeyInBackup, setIncludeApiKeyInBackup] = useState(false);
   
   const user = useLiveQuery(() => db.users.get('local_user'));
 
@@ -52,16 +56,28 @@ const Settings = () => {
   };
 
   const handleApiKeyChange = async (val: string) => {
+    setKeySaved(false);
     await db.users.update('local_user', { ai_api_key: val });
+    setKeySaved(true);
   };
 
   const handleExportData = async () => {
     setIsExporting(true);
     try {
       const data = {
+        format: 'ascend-backup',
+        version: 1,
+        exportedAt: new Date().toISOString(),
         items: await db.items.toArray(),
+        habits: await db.habits.toArray(),
         tracks: await db.tracks.toArray(),
-        trackItems: await db.track_items.toArray()
+        track_items: await db.track_items.toArray(),
+        users: (await db.users.toArray()).map(backupUser => {
+          if (includeApiKeyInBackup) return backupUser;
+          const { ai_api_key: _apiKey, ...userWithoutApiKey } = backupUser;
+          return userWithoutApiKey;
+        }),
+        settings: await db.settings.toArray()
       };
       
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -73,10 +89,66 @@ const Settings = () => {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      setDataNotice(includeApiKeyInBackup
+        ? 'Backup downloaded with your Gemini API key. Keep the file private.'
+        : 'Backup downloaded. Your Gemini API key was excluded.');
     } catch (e) {
       console.error('Failed to export', e);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleImportData = async (file?: File) => {
+    if (!file) return;
+    setIsImporting(true);
+    setDataNotice('');
+    try {
+      const backup = JSON.parse(await file.text());
+      const tables = ['items', 'habits', 'tracks', 'track_items', 'users', 'settings'] as const;
+      const currentFormat = backup?.format === 'ascend-backup' && backup?.version === 1 && tables.every(name => Array.isArray(backup[name]));
+      const legacyFormat = backup?.format === undefined
+        && Array.isArray(backup?.items)
+        && Array.isArray(backup?.tracks)
+        && Array.isArray(backup?.trackItems);
+      if (!currentFormat && !legacyFormat) {
+        throw new Error('This is not a supported Ascend backup file.');
+      }
+      const restoreData = legacyFormat
+        ? { items: backup.items, habits: [], tracks: backup.tracks, track_items: backup.trackItems, users: [], settings: [] }
+        : backup;
+      const requiredFields: Record<typeof tables[number], string[]> = {
+        items: ['id', 'title', 'category', 'type', 'status', 'created_at'],
+        habits: ['id', 'title', 'category', 'current_streak', 'longest_streak', 'status', 'created_at'],
+        tracks: ['id', 'title', 'status', 'created_at'],
+        track_items: ['id', 'track_id', 'title', 'order_index', 'is_completed', 'created_at'],
+        users: ['id', 'timezone', 'wake_time', 'sleep_time', 'planning_time', 'bedtime_summary_time'],
+        settings: ['id', 'user_id', 'defaults_json', 'gamification_enabled', 'ai_tone_preference', 'theme'],
+      };
+      for (const tableName of tables) {
+        const rows = restoreData[tableName];
+        if (!Array.isArray(rows) || rows.some((row: unknown) =>
+          !row || typeof row !== 'object' || Array.isArray(row) ||
+          requiredFields[tableName].some(field => !(field in row))
+        )) {
+          throw new Error(`Backup contains invalid ${tableName} records. Your current data was not changed.`);
+        }
+      }
+      if (!window.confirm('Restore this backup? It will replace all current Ascend data in this browser.')) return;
+      await db.transaction('rw', [db.items, db.habits, db.tracks, db.track_items, db.users, db.settings], async () => {
+        for (const name of tables) await db.table(name).clear();
+        for (const name of tables) {
+          const rows = restoreData[name];
+          if (rows.length) await db.table(name).bulkAdd(rows);
+        }
+      });
+      setDataNotice(legacyFormat
+        ? 'Older backup restored. It did not contain habits, user settings, or API key.'
+        : 'Backup restored successfully.');
+    } catch (error) {
+      setDataNotice(error instanceof Error ? error.message : 'Could not restore this backup.');
+    } finally {
+      setIsImporting(false);
     }
   };
 
@@ -189,6 +261,7 @@ const Settings = () => {
             <p className="text-xs text-slate-500 mt-2">
               Get a free API key from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-brand hover:underline">Google AI Studio</a>.
             </p>
+            {keySaved && <p className="mt-2 text-xs text-emerald-400" role="status" aria-live="polite">Saved locally in this browser.</p>}
           </div>
         </div>
       </div>
@@ -199,8 +272,8 @@ const Settings = () => {
             <ShieldAlert className="w-5 h-5 text-slate-400" />
             <h3 className="text-lg font-medium text-slate-200">Local Data</h3>
           </div>
-          <p className="text-sm text-slate-400 mb-4">
-            Ascend is completely local-first. Your data never leaves your device unless you export it yourself.
+            <p className="text-sm text-slate-400 mb-4">
+            Export or restore tasks, habits, tracks, and settings. Your Gemini API key is excluded by default.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-3">
@@ -212,7 +285,17 @@ const Settings = () => {
               <Download className="w-4 h-4" />
               {isExporting ? 'Exporting...' : 'Export JSON Backup'}
             </button>
+            <label className="flex items-center gap-2 text-sm text-slate-400">
+              <input type="checkbox" checked={includeApiKeyInBackup} onChange={e => setIncludeApiKeyInBackup(e.target.checked)} className="accent-brand" />
+              Include Gemini API key
+            </label>
+            <label className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer">
+              <Upload className="w-4 h-4" />
+              {isImporting ? 'Restoring...' : 'Restore JSON Backup'}
+              <input type="file" accept="application/json,.json" className="sr-only" disabled={isImporting} onChange={e => { void handleImportData(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+            </label>
           </div>
+          {dataNotice && <p className="mt-3 text-sm text-slate-300" role="status">{dataNotice}</p>}
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Flame, Plus, Clock, Play, Pause, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
+import { Flame, Plus, Clock, Play, Pause, Trash2, CheckCircle2, Circle } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '../db/db';
 import clsx from 'clsx';
@@ -7,6 +8,8 @@ import { audio } from '../utils/audio';
 
 const Habits = () => {
   const habits = useLiveQuery(() => db.habits.toArray());
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const todayItems = useLiveQuery(() => db.items.where('planned_date').equals(today).toArray(), [today]) || [];
   const [newTitle, setNewTitle] = useState('');
   const [newTime, setNewTime] = useState('');
 
@@ -58,6 +61,23 @@ const Habits = () => {
     }
   };
 
+  const toggleToday = async (habitId: string) => {
+    const item = todayItems.find(entry => entry.goal_id === habitId && entry.type === 'routine');
+    if (!item) return;
+    const done = item.status === 'done';
+    await db.items.update(item.id, {
+      status: done ? 'pending' : 'done',
+      completed_date: done ? undefined : today,
+    });
+    const habit = await db.habits.get(habitId);
+    if (habit) await db.habits.update(habitId, {
+      current_streak: done ? Math.max(0, habit.current_streak - 1) : habit.current_streak + (habit.last_completed_date === today ? 0 : 1),
+      longest_streak: done ? habit.longest_streak : Math.max(habit.longest_streak, habit.current_streak + (habit.last_completed_date === today ? 0 : 1)),
+      last_completed_date: done ? undefined : today,
+    });
+    audio.playClick();
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-slide-up">
       <header>
@@ -107,6 +127,9 @@ const Habits = () => {
             </div>
 
             <div className="flex items-center gap-2">
+              <button onClick={() => toggleToday(habit.id)} disabled={habit.status !== 'active' || !todayItems.some(entry => entry.goal_id === habit.id && entry.type === 'routine')} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 hover:bg-dark-700 disabled:opacity-40">
+                {todayItems.some(entry => entry.goal_id === habit.id && entry.type === 'routine' && entry.status === 'done') ? <><CheckCircle2 className="h-5 w-5 text-emerald-400" /> Done today</> : <><Circle className="h-5 w-5" /> Mark done</>}
+              </button>
               <button onClick={() => toggleStatus(habit.id, habit.status)} className="p-2 hover:bg-dark-700 rounded-lg text-slate-400 transition-colors">
                 {habit.status === 'active' ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
               </button>

@@ -26,6 +26,16 @@ const Tracks = () => {
   const [draggedEditIdx, setDraggedEditIdx] = useState<number | null>(null);
 
   const tracks = useLiveQuery(() => db.tracks.toArray(), []);
+  const trackProgress = useLiveQuery(async () => {
+    const all = await db.track_items.toArray();
+    return all.reduce((progress, item) => {
+      const current = progress[item.track_id] || { total: 0, completed: 0 };
+      current.total++;
+      if (item.is_completed) current.completed++;
+      progress[item.track_id] = current;
+      return progress;
+    }, {} as Record<string, { total: number; completed: number }>);
+  }, []) || {};
   const trackItems = useLiveQuery(
     () => expandedTrackId ? db.track_items.where({ track_id: expandedTrackId }).sortBy('order_index') : Promise.resolve([] as any[]),
     [expandedTrackId]
@@ -249,6 +259,12 @@ const Tracks = () => {
                       {isExpanded ? <ChevronUp className="w-5 h-5 text-slate-500" /> : <ChevronDown className="w-5 h-5 text-slate-500" />}
                     </h3>
                     <p className="text-slate-400 mt-1">{track.description}</p>
+                    <div className="mt-3 flex items-center gap-3" aria-label={`${trackProgress[track.id]?.completed || 0} of ${trackProgress[track.id]?.total || 0} lessons completed`}>
+                      <div className="h-2 flex-1 max-w-48 overflow-hidden rounded-full bg-dark-700">
+                        <div className="h-full rounded-full bg-brand transition-all" style={{ width: `${trackProgress[track.id]?.total ? (trackProgress[track.id].completed / trackProgress[track.id].total) * 100 : 0}%` }} />
+                      </div>
+                      <span className="text-xs text-slate-400">{trackProgress[track.id]?.completed || 0}/{trackProgress[track.id]?.total || 0} lessons</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <button 

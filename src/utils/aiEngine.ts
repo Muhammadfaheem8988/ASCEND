@@ -1,7 +1,7 @@
 import { db } from '../db/db';
 import { format } from 'date-fns';
 
-export async function generateBedtimeSummary(): Promise<string> {
+export async function generateBedtimeSummary(): Promise<{ text: string; source: 'gemini' | 'local'; fallbackReason?: string }> {
   const user = await db.users.get('local_user');
   const todayStr = format(new Date(), 'yyyy-MM-dd');
   
@@ -68,7 +68,7 @@ Keep it under 4 short paragraphs. Use a warm, professional, and slightly futuris
       throw new Error('Empty response');
     }
     
-    return text;
+    return { text, source: 'gemini' };
   } catch (error: any) {
     // Rule-based fallback summary
     const completedCount = completed.length;
@@ -90,7 +90,10 @@ Keep it under 4 short paragraphs. Use a warm, professional, and slightly futuris
       summary += `\n\nYou are building strong habits with your ${routines.length} daily routines. Keep the momentum going!`;
     }
 
-    return summary;
+    const fallbackReason = !user?.ai_api_key
+      ? 'No Gemini API key is configured.'
+      : error instanceof Error ? error.message : 'Gemini could not be reached.';
+    return { text: summary, source: 'local', fallbackReason };
   }
 }
 
