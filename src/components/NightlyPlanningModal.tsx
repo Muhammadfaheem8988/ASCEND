@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Moon, Plus } from 'lucide-react';
 import { db } from '../db/db';
@@ -14,7 +14,15 @@ const CATEGORIES = ['Study', 'Workout', 'Personal Branding', 'Custom'];
 
 export default function NightlyPlanningModal({ isOpen, onClose }: Props) {
   const [inputText, setInputText] = useState('');
-  const [draftItems, setDraftItems] = useState<any[]>([]);
+  const draftStorageKey = `ascend-plan-drafts-${format(addDays(new Date(), 1), 'yyyy-MM-dd')}`;
+  const [draftItems, setDraftItems] = useState<any[]>(() => {
+    try { return JSON.parse(localStorage.getItem(draftStorageKey) || '[]'); }
+    catch { return []; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(draftStorageKey, JSON.stringify(draftItems));
+  }, [draftItems, draftStorageKey]);
 
   const activeTrackSuggestions = useLiveQuery(async () => {
     const activeTracks = await db.tracks.where('status').equals('active').toArray();
@@ -64,15 +72,16 @@ export default function NightlyPlanningModal({ isOpen, onClose }: Props) {
     setInputText('');
   };
 
-  const handleAddTrackDraft = (s: any) => {
+  const handleAddTrackDraft = async (s: any) => {
     if (draftItems.some(i => i.goal_id === s.itemId)) return;
+    const timing = await getDefaultTiming('Study');
     
     setDraftItems([...draftItems, {
       id: crypto.randomUUID(),
       title: s.itemTitle,
       category: `Track: ${s.trackTitle}`,
-      time: '',
-      duration: 30,
+      time: timing.time,
+      duration: timing.duration,
       goal_id: s.itemId
     }]);
   };
@@ -102,6 +111,7 @@ export default function NightlyPlanningModal({ isOpen, onClose }: Props) {
     }
     onClose();
     setDraftItems([]);
+    localStorage.removeItem(draftStorageKey);
   };
 
   const addChip = (cat: string) => {
@@ -185,11 +195,17 @@ export default function NightlyPlanningModal({ isOpen, onClose }: Props) {
                 <div key={item.id} className="flex items-center justify-between bg-dark-900/50 p-3 rounded-xl border border-dark-700">
                   <div>
                     <p className="font-medium text-slate-200">{item.title}</p>
-                    <p className="text-sm text-slate-400">{item.category} • {item.time}</p>
+                    <p className="text-sm text-slate-400">{item.category}</p>
                   </div>
-                  <button onClick={() => handleRemoveDraft(item.id)} className="text-slate-500 hover:text-red-400 transition-colors">
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-slate-500">
+                      Time
+                      <input aria-label={`Time for ${item.title}`} type="time" value={item.time || ''} onChange={e => setDraftItems(draftItems.map(draft => draft.id === item.id ? { ...draft, time: e.target.value } : draft))} className="input-field !w-auto !py-1 text-slate-200" />
+                    </label>
+                    <button type="button" onClick={() => handleRemoveDraft(item.id)} aria-label={`Remove ${item.title}`} className="text-slate-500 hover:text-red-400 transition-colors">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
