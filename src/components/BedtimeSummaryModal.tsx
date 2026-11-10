@@ -13,6 +13,8 @@ const BedtimeSummaryModal = ({ isOpen, onClose }: BedtimeSummaryModalProps) => {
   const [summary, setSummary] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [source, setSource] = useState<'gemini' | 'local' | null>(null);
+  const [fallbackReason, setFallbackReason] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -21,6 +23,8 @@ const BedtimeSummaryModal = ({ isOpen, onClose }: BedtimeSummaryModalProps) => {
     } else {
       setSummary('');
       setError('');
+      setSource(null);
+      setFallbackReason('');
     }
   }, [isOpen]);
 
@@ -28,8 +32,10 @@ const BedtimeSummaryModal = ({ isOpen, onClose }: BedtimeSummaryModalProps) => {
     setLoading(true);
     setError('');
     try {
-      const text = await generateBedtimeSummary();
-      setSummary(text);
+      const result = await generateBedtimeSummary();
+      setSummary(result.text);
+      setSource(result.source);
+      setFallbackReason(result.fallbackReason || '');
       audio.playSuccess();
     } catch (e: any) {
       setError(e.message);
@@ -72,11 +78,15 @@ const BedtimeSummaryModal = ({ isOpen, onClose }: BedtimeSummaryModalProps) => {
               {error}
             </div>
           ) : (
+            <>
+            {source === 'local' && <p className="mb-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-200" role="status">Local summary · {fallbackReason}</p>}
+            {source === 'gemini' && <p className="mb-4 text-xs text-slate-500">Generated with Gemini</p>}
             <div className="prose prose-invert prose-p:text-slate-300 prose-p:leading-relaxed max-w-none text-sm md:text-base">
               {summary.split('\n').map((paragraph, idx) => (
                 paragraph.trim() ? <p key={idx} className="mb-4">{paragraph}</p> : null
               ))}
             </div>
+            </>
           )}
         </div>
         

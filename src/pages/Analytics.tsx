@@ -253,6 +253,9 @@ const Analytics = () => {
               )}>
                 {day.dayName}
               </span>
+              <span className="text-[10px] text-slate-500 tabular-nums shrink-0" aria-label={`${day.done} of ${day.total} tasks completed`}>
+                {day.done}/{day.total}
+              </span>
             </div>
           ))}
         </div>

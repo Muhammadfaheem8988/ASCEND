@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { format, subDays, addDays } from 'date-fns';
 import { CheckCircle2, Circle, Plus, Clock, MoreVertical, Moon, Trash2, Star, Flame, Sparkles } from 'lucide-react';
@@ -12,6 +12,16 @@ import { audio } from '../utils/audio';
 
 const Today = () => {
   const [quickAddText, setQuickAddText] = useState('');
+  const [quickAddTime, setQuickAddTime] = useState('');
+  const [quickAddPreview, setQuickAddPreview] = useState<{ title: string; time: string; category: string; duration: number; timeSource: 'input' | 'suggested' } | null>(null);
+  const [isTimeModalOpen, setIsTimeModalOpen] = useState(false);
+  const [editingTime, setEditingTime] = useState('');
+  const [quickAddNotice, setQuickAddNotice] = useState('');
+  useEffect(() => {
+    if (!quickAddNotice.startsWith('Task added')) return;
+    const timeout = window.setTimeout(() => setQuickAddNotice(''), 2600);
+    return () => window.clearTimeout(timeout);
+  }, [quickAddNotice]);
   const [isPlanningModalOpen, setIsPlanningModalOpen] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
@@ -57,6 +67,7 @@ const Today = () => {
     e.preventDefault();
     if (!quickAddText.trim()) return;
 
+    if (!quickAddPreview || quickAddPreview.title !== parseTaskInput(quickAddText).title) {
     const { title, time, category } = parseTaskInput(quickAddText);
     let finalTime = time;
     let duration = 30;
@@ -67,14 +78,20 @@ const Today = () => {
       duration = defaultTiming.duration;
     }
 
+    setQuickAddTime(finalTime);
+    setQuickAddPreview({ title: title || 'New Task', time: finalTime, category, duration, timeSource: time ? 'input' : 'suggested' });
+    setQuickAddNotice('Review the task and time, then add it.');
+    return;
+    }
+
     const newItem = {
       id: crypto.randomUUID(),
       user_id: 'local_user',
-      title: title || 'New Task',
-      category,
+      title: quickAddPreview.title,
+      category: quickAddPreview.category,
       type: 'task' as const,
-      scheduled_time: finalTime,
-      duration_min: duration,
+      scheduled_time: quickAddTime,
+      duration_min: quickAddPreview.duration,
       is_top_focus: false,
       status: 'pending' as const,
       planned_date: format(new Date(), 'yyyy-MM-dd'),
@@ -84,6 +101,8 @@ const Today = () => {
 
     await db.items.add(newItem);
     setQuickAddText('');
+    setQuickAddPreview(null);
+    setQuickAddNotice('Task added to today’s plan.');
   };
 
   const toggleItem = async (id: string, currentStatus: string, goalId?: string) => {
@@ -209,6 +228,8 @@ const Today = () => {
   };
 
   const renderItem = (item: any, index: number, isPendingToday: boolean = false) => {
+    const isOverdue = item.status === 'pending' && item.planned_date && item.planned_date < format(new Date(), 'yyyy-MM-dd');
+    const isTomorrow = item.planned_date === format(addDays(new Date(), 1), 'yyyy-MM-dd');
     const isPriority1 = isPendingToday && index === 0;
     const isPriority2 = isPendingToday && index === 1;
     const isPriority3 = isPendingToday && index === 2;
@@ -216,13 +237,14 @@ const Today = () => {
     return (
       <div
         key={item.id}
-        draggable={item.status === 'pending'}
+        draggable={item.status === 'pending' && !isTomorrow}
         onDragStart={() => setDraggedId(item.id)}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => handleDrop(e, item.id)}
         onDragEnd={() => setDraggedId(null)}
         className={clsx(
-          "glass-panel p-4 flex items-center gap-4 transition-all duration-300 group cursor-grab active:cursor-grabbing relative",
+          "glass-panel p-4 flex items-center gap-4 transition-all duration-300 group relative",
+          item.status === 'pending' && !isTomorrow ? 'cursor-grab active:cursor-grabbing' : '',
           item.status === 'done' ? 'opacity-50 grayscale cursor-default' : '',
           draggedId === item.id ? 'opacity-30 scale-95 z-40' : '',
           activeDropdownId === item.id ? 'z-50' : 'z-0',
@@ -232,8 +254,11 @@ const Today = () => {
         )}
       >
         <button
-          onClick={() => toggleItem(item.id, item.status, item.goal_id)}
-          className="flex-shrink-0 text-slate-400 hover:text-brand transition-colors"
+          onClick={() => !isTomorrow && toggleItem(item.id, item.status, item.goal_id)}
+          disabled={isTomorrow}
+          aria-label={isTomorrow ? 'Available tomorrow' : item.status === 'done' ? 'Mark as pending' : 'Mark as done'}
+          title={isTomorrow ? 'This task is planned for tomorrow' : undefined}
+          className={clsx('flex-shrink-0 text-slate-400 transition-colors', isTomorrow ? 'cursor-not-allowed opacity-50' : 'hover:text-brand')}
         >
           {item.status === 'done' ? (
             <CheckCircle2 className="w-7 h-7 text-emerald-500" />
@@ -256,6 +281,8 @@ const Today = () => {
             </h4>
           </div>
         <div className="flex items-center gap-3 mt-1 text-sm text-slate-400">
+          {isTomorrow && <span className="px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 text-xs font-semibold">Tomorrow</span>}
+          {isOverdue && <span className="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 text-xs font-semibold">Overdue</span>}
           <span className="px-2 py-0.5 rounded-md bg-dark-700/50 font-medium flex items-center gap-1">
             {item.type === 'routine' && <Flame className="w-3.5 h-3.5 text-orange-500" />}
             {item.category}
@@ -329,7 +356,7 @@ const Today = () => {
         <input
           type="text"
           value={quickAddText}
-          onChange={(e) => setQuickAddText(e.target.value)}
+          onChange={(e) => { setQuickAddText(e.target.value); setQuickAddPreview(null); setQuickAddNotice(''); }}
           className="input-field pl-12 h-14 text-lg bg-dark-800/80 backdrop-blur-md placeholder-slate-500 shadow-lg shadow-black/20"
           placeholder="e.g., Workout 7am..."
         />
@@ -337,9 +364,40 @@ const Today = () => {
           type="submit"
           className="absolute inset-y-2 right-2 bg-brand hover:bg-brand-light text-white px-4 rounded-lg font-medium transition-colors"
         >
-          Add
+          {quickAddPreview ? 'Add task' : 'Preview'}
         </button>
       </form>
+      {quickAddPreview && (
+        <div className="glass-panel -mt-5 p-4 flex flex-wrap items-center gap-4" aria-live="polite">
+          <div className="flex-1 min-w-40">
+            <p className="text-xs uppercase tracking-wide text-slate-500">Task preview · {quickAddPreview.category} · {quickAddPreview.timeSource === 'input' ? 'From your input' : 'Suggested time'}</p>
+            <p className="font-medium text-slate-200">{quickAddPreview.title}</p>
+          </div>
+          <button type="button" onClick={() => { setEditingTime(quickAddTime); setIsTimeModalOpen(true); }} className="btn-secondary px-3 py-2 text-sm flex items-center gap-2">
+            <Clock className="w-4 h-4" /> {quickAddTime || 'Set time'}
+          </button>
+        </div>
+      )}
+      {isTimeModalOpen && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-dark-900/80 backdrop-blur-sm" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setIsTimeModalOpen(false); }}>
+          <div className="w-full max-w-sm rounded-2xl border border-dark-700 bg-dark-800 p-6 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="quick-add-time-title">
+            <h3 id="quick-add-time-title" className="text-xl font-bold text-slate-100">Choose a time</h3>
+            <p className="mt-1 text-sm text-slate-400">{quickAddPreview?.title}</p>
+            <label className="mt-5 block text-sm text-slate-400" htmlFor="quick-add-time">Task time</label>
+            <input id="quick-add-time" type="time" autoFocus value={editingTime} onChange={(e) => setEditingTime(e.target.value)} className="input-field mt-2" />
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={() => setIsTimeModalOpen(false)} className="btn-secondary">Cancel</button>
+              <button type="button" onClick={() => { setQuickAddTime(editingTime); setIsTimeModalOpen(false); }} className="btn-primary">Save time</button>
+            </div>
+          </div>
+        </div>, document.body
+      )}
+      {quickAddNotice && !quickAddNotice.startsWith('Task added') && <p className="-mt-6 text-sm text-brand-light" role="status">{quickAddNotice}</p>}
+      {quickAddNotice.startsWith('Task added') && (
+        <div className="fixed bottom-6 left-1/2 z-[1000] -translate-x-1/2 rounded-xl border border-emerald-500/30 bg-dark-800 px-5 py-3 text-sm font-medium text-emerald-300 shadow-xl animate-in fade-in slide-in-from-bottom-2" role="status" aria-live="polite">
+          <span className="mr-2">✓</span>{quickAddNotice}
+        </div>
+      )}
 
       {/* Today's Schedule Timeline */}
       <div className="space-y-4">
