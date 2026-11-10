@@ -66,8 +66,9 @@ const Settings = () => {
     try {
       const data = {
         format: 'ascend-backup',
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
+        tombstones: await db.tombstones.toArray(),
         items: await db.items.toArray(),
         habits: await db.habits.toArray(),
         tracks: await db.tracks.toArray(),
@@ -106,7 +107,7 @@ const Settings = () => {
     try {
       const backup = JSON.parse(await file.text());
       const tables = ['items', 'habits', 'tracks', 'track_items', 'users', 'settings'] as const;
-      const currentFormat = backup?.format === 'ascend-backup' && backup?.version === 1 && tables.every(name => Array.isArray(backup[name]));
+      const currentFormat = backup?.format === 'ascend-backup' && [1, 2].includes(backup?.version) && tables.every(name => Array.isArray(backup[name]));
       const legacyFormat = backup?.format === undefined
         && Array.isArray(backup?.items)
         && Array.isArray(backup?.tracks)
@@ -135,19 +136,99 @@ const Settings = () => {
         }
       }
       if (!window.confirm('Restore this backup? It will replace all current Ascend data in this browser.')) return;
-      await db.transaction('rw', [db.items, db.habits, db.tracks, db.track_items, db.users, db.settings], async () => {
+      db.suppressSyncHooks = true;
+      await db.transaction('rw', [db.items, db.habits, db.tracks, db.track_items, db.users, db.settings, db.tombstones], async () => {
         for (const name of tables) await db.table(name).clear();
         for (const name of tables) {
           const rows = restoreData[name];
           if (rows.length) await db.table(name).bulkAdd(rows);
         }
+        await db.tombstones.clear();
+        if (backup.version === 2 && Array.isArray(backup.tombstones) && backup.tombstones.length) {
+          await db.tombstones.bulkPut(backup.tombstones);
+        }
       });
+      db.suppressSyncHooks = false;
       setDataNotice(legacyFormat
         ? 'Older backup restored. It did not contain habits, user settings, or API key.'
         : 'Backup restored successfully.');
     } catch (error) {
       setDataNotice(error instanceof Error ? error.message : 'Could not restore this backup.');
     } finally {
+      db.suppressSyncHooks = false;
+      setIsImporting(false);
+    }
+  };
+
+  const handleMergeData = async (file?: File) => {
+    if (!file) return;
+    setIsImporting(true);
+    setDataNotice('');
+    try {
+      const backup = JSON.parse(await file.text());
+      const names = ['items', 'habits', 'tracks', 'track_items', 'users', 'settings'] as const;
+      if (backup?.format !== 'ascend-backup' || ![1, 2].includes(backup?.version) || !names.every(name => Array.isArray(backup[name]))) {
+        throw new Error('Merge requires a current Ascend backup.');
+      }
+      const tombstones = backup.version === 2 && Array.isArray(backup.tombstones) ? backup.tombstones : [];
+      const badTombstone = tombstones.some((entry: any) => !entry || typeof entry.table_name !== 'string' || typeof entry.record_id !== 'string' || typeof entry.deleted_at !== 'string');
+      if (badTombstone) throw new Error('Backup contains invalid deletion history. No data was changed.');
+      const required: Record<typeof names[number], string[]> = {
+        items: ['id', 'title', 'category', 'type', 'status', 'created_at'],
+        habits: ['id', 'title', 'category', 'current_streak', 'longest_streak', 'status', 'created_at'],
+        tracks: ['id', 'title', 'status', 'created_at'],
+        track_items: ['id', 'track_id', 'title', 'order_index', 'is_completed', 'created_at'],
+        users: ['id', 'timezone', 'wake_time', 'sleep_time', 'planning_time', 'bedtime_summary_time'],
+        settings: ['id', 'user_id', 'defaults_json', 'gamification_enabled', 'ai_tone_preference', 'theme'],
+      };
+      for (const name of names) {
+        if (backup[name].some((row: any) => !row || typeof row !== 'object' || Array.isArray(row) || required[name].some(field => !(field in row)))) {
+          throw new Error(`Backup contains invalid ${name} records. No data was changed.`);
+        }
+      }
+      if (!window.confirm('Merge this backup with current data? Newer records win for matching IDs. Deletions are applied when their recorded time is newer than the record.')) return;
+
+      db.suppressSyncHooks = true;
+      await db.transaction('rw', [db.items, db.habits, db.tracks, db.track_items, db.users, db.settings, db.tombstones], async () => {
+        const mergedTombstones = new Map<string, { table_name: string; record_id: string; deleted_at: string }>();
+        for (const entry of [...await db.tombstones.toArray(), ...tombstones]) {
+          const key = `${entry.table_name}:${entry.record_id}`;
+          const old = mergedTombstones.get(key);
+          if (!old || entry.deleted_at > old.deleted_at) mergedTombstones.set(key, entry);
+        }
+        await db.tombstones.bulkPut([...mergedTombstones.values()]);
+
+        for (const name of names) {
+          const localRows = await db.table(name).toArray();
+          const rows = new Map<string, any>(localRows.map((row: any) => [row.id, row]));
+          for (const incoming of backup[name]) {
+            if (!incoming || typeof incoming.id !== 'string') throw new Error(`Backup contains invalid ${name} records. No data was changed.`);
+            const local = rows.get(incoming.id);
+            const localTime = local?.updated_at || local?.created_at || '';
+            const incomingTime = incoming.updated_at || incoming.created_at || backup.exportedAt || '';
+            if (!local || incomingTime > localTime) {
+              if (name === 'users' && local?.ai_api_key && !incoming.ai_api_key) incoming.ai_api_key = local.ai_api_key;
+              rows.set(incoming.id, incoming);
+            } else if (name === 'users' && local && !local.ai_api_key && incoming.ai_api_key) {
+              rows.set(incoming.id, { ...local, ai_api_key: incoming.ai_api_key });
+            }
+          }
+          const alive = [...rows.values()].filter((row: any) => {
+            const tombstone = mergedTombstones.get(`${name}:${row.id}`);
+            return !tombstone || (row.updated_at || row.created_at || '') > tombstone.deleted_at;
+          });
+          await db.table(name).bulkPut(alive);
+          for (const tombstone of mergedTombstones.values()) {
+            if (tombstone.table_name === name) await db.table(name).delete(tombstone.record_id);
+          }
+        }
+      });
+      db.suppressSyncHooks = false;
+      setDataNotice('Backup merged. Newer edits were kept, and recorded deletions were applied.');
+    } catch (error) {
+      setDataNotice(error instanceof Error ? error.message : 'Could not merge this backup.');
+    } finally {
+      db.suppressSyncHooks = false;
       setIsImporting(false);
     }
   };
@@ -293,6 +374,11 @@ const Settings = () => {
               <Upload className="w-4 h-4" />
               {isImporting ? 'Restoring...' : 'Restore JSON Backup'}
               <input type="file" accept="application/json,.json" className="sr-only" disabled={isImporting} onChange={e => { void handleImportData(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+            </label>
+            <label className="btn-secondary flex items-center justify-center gap-2 w-full sm:w-auto cursor-pointer">
+              <Upload className="w-4 h-4" />
+              {isImporting ? 'Merging...' : 'Merge JSON Backup'}
+              <input type="file" accept="application/json,.json" className="sr-only" disabled={isImporting} onChange={e => { void handleMergeData(e.target.files?.[0]); e.currentTarget.value = ''; }} />
             </label>
           </div>
           {dataNotice && <p className="mt-3 text-sm text-slate-300" role="status">{dataNotice}</p>}

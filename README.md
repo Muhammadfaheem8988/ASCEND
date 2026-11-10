@@ -65,6 +65,17 @@ When you trigger the Daily Review, the app securely passes your day's completion
 
 ## 🚀 How to Run the Project Locally
 
+### Android app and offline reminders
+
+Ascend can also run as a native Android app using Capacitor. Scheduled reminders use Android local notifications, so they do not require a network connection or Ascend to remain open.
+
+1. Install Android Studio and the Android SDK.
+2. Run `npm install` and then `npm run android:sync`.
+3. Open the Android project with `npm run android:open` and run it on a device or emulator.
+4. Allow notifications when prompted. For precise delivery on Android 12+, enable **Alarms & reminders** for Ascend in Android settings if the device asks. If that permission is unavailable, Android may deliver reminders less precisely.
+
+The web/PWA version continues to use browser notifications while the app is open. Native Android local notifications are available only in the installed Android build.
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/Muhammadfaheem8988/ASCEND.git

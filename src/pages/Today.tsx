@@ -9,8 +9,10 @@ import NightlyPlanningModal from '../components/NightlyPlanningModal';
 import BedtimeSummaryModal from '../components/BedtimeSummaryModal';
 import clsx from 'clsx';
 import { audio } from '../utils/audio';
+import { useSearchParams } from 'react-router-dom';
 
 const Today = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [quickAddText, setQuickAddText] = useState('');
   const [quickAddTime, setQuickAddTime] = useState('');
   const [quickAddPreview, setQuickAddPreview] = useState<{ title: string; time: string; category: string; duration: number; timeSource: 'input' | 'suggested' } | null>(null);
@@ -27,6 +29,13 @@ const Today = () => {
   const [activeDropdownId, setActiveDropdownId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [nextLessonPrompt, setNextLessonPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    const open = searchParams.get('open');
+    if (open === 'plan') setIsPlanningModalOpen(true);
+    if (open === 'review') setIsSummaryModalOpen(true);
+    if (open === 'plan' || open === 'review') setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams]);
   
   const data = useLiveQuery(
     async () => {
