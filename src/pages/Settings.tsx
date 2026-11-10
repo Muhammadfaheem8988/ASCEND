@@ -2,6 +2,8 @@ import { Download, Upload, Trash2, AlertTriangle, ShieldAlert, Clock, Moon, Sun,
 import { db } from '../db/db';
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
+import { Capacitor } from '@capacitor/core';
+import { LocalNotifications } from '@capacitor/local-notifications';
 
 const Settings = () => {
   const [isExporting, setIsExporting] = useState(false);
@@ -10,8 +12,26 @@ const Settings = () => {
   const [isImporting, setIsImporting] = useState(false);
   const [dataNotice, setDataNotice] = useState('');
   const [includeApiKeyInBackup, setIncludeApiKeyInBackup] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState('unknown');
+  const [exactAlarmAllowed, setExactAlarmAllowed] = useState<boolean | null>(null);
+  const isNativeAndroid = Capacitor.getPlatform() === 'android';
   
   const user = useLiveQuery(() => db.users.get('local_user'));
+
+  const refreshReminderPermissions = async () => {
+    const notifications = await LocalNotifications.checkPermissions();
+    setNotificationPermission(notifications.display);
+    const exact = await LocalNotifications.checkExactNotificationSetting();
+    setExactAlarmAllowed(exact.exact_alarm === 'granted');
+  };
+
+  const setupReminders = async () => {
+    const current = await LocalNotifications.checkPermissions();
+    if (current.display !== 'granted') await LocalNotifications.requestPermissions();
+    const exact = await LocalNotifications.checkExactNotificationSetting();
+    if (exact.exact_alarm !== 'granted') await LocalNotifications.changeExactNotificationSetting();
+    await refreshReminderPermissions();
+  };
 
   useEffect(() => {
     const initUser = async () => {
@@ -29,6 +49,10 @@ const Settings = () => {
     };
     initUser();
   }, []);
+
+  useEffect(() => {
+    if (isNativeAndroid) void refreshReminderPermissions();
+  }, [isNativeAndroid]);
 
   const calculateDependentTimes = (sleepTimeStr: string) => {
     const [hours, minutes] = sleepTimeStr.split(':').map(Number);
@@ -316,6 +340,20 @@ const Settings = () => {
           )}
         </div>
       </div>
+      {isNativeAndroid && (
+        <div className="glass-panel p-6 space-y-3">
+          <div className="flex items-center gap-2 text-brand-light">
+            <Clock className="w-5 h-5" />
+            <h3 className="text-lg font-medium text-slate-200">Android Reminders</h3>
+          </div>
+          <p className="text-sm text-slate-400">
+            Notifications: <span className={notificationPermission === 'granted' ? 'text-emerald-400' : 'text-amber-300'}>{notificationPermission}</span>
+            {' · '}Exact alarms: <span className={exactAlarmAllowed ? 'text-emerald-400' : 'text-amber-300'}>{exactAlarmAllowed === null ? 'checking' : exactAlarmAllowed ? 'allowed' : 'not allowed'}</span>
+          </p>
+          <p className="text-xs text-slate-500">Allow notifications and exact alarms for precise offline reminders. Android may delay reminders if exact alarms are unavailable.</p>
+          <button type="button" onClick={() => void setupReminders()} className="btn-secondary">Set up reminders</button>
+        </div>
+      )}
       <div className="glass-panel p-6 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-4">
